@@ -169,13 +169,22 @@ def render_table_analytics(table_name):
             return
 
         st.subheader(f"🔍 Filter {table_name}")
-        f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+        f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
         active_filters = {}
 
+       # with f_col1:
+        #    codes = pd.read_sql(f"SELECT DISTINCT transaction_code FROM {table_name}", engine)
+         #   selected_codes = st.multiselect(f"Transaction Codes", codes["transaction_code"].dropna().unique(), key=f"code_{table_name}")
+          #  if selected_codes: active_filters["transaction_code"] = selected_codes
         with f_col1:
-            codes = pd.read_sql(f"SELECT DISTINCT transaction_code FROM {table_name}", engine)
-            selected_codes = st.multiselect(f"Transaction Codes", codes["transaction_code"].dropna().unique(), key=f"code_{table_name}")
-            if selected_codes: active_filters["transaction_code"] = selected_codes
+            code_in = st.text_input(
+                "Transaction Codes", 
+                placeholder="e.g. 101, 882",
+                help="Enter exact codes separated by commas",
+                key=f"code_in_{table_name}"
+            )
+            if code_in:
+                active_filters["transaction_code"] = [c.strip() for c in code_in.split(",") if c.strip()]
 
         with f_col2:
             valdates = pd.read_sql(f"SELECT DISTINCT value_date FROM {table_name}", engine)
@@ -187,12 +196,30 @@ def render_table_analytics(table_name):
             selected_booking_dates = st.multiselect(f"Booking Date", booking_dates["booking_date"].dropna().unique(), key=f"booking_{table_name}")
             if selected_booking_dates: active_filters["booking_date"] = selected_booking_dates
 
+        #with f_col4:
+         #   try:
+          #      cats = pd.read_sql(f"SELECT DISTINCT category FROM {table_name}", engine)
+           #     selected_cats = st.multiselect(f"Category", cats["category"].dropna().unique(), key=f"cat_{table_name}")
+            #    if selected_cats: active_filters["category"] = selected_cats
+            #except: st.caption("No category column")
+
         with f_col4:
             try:
-                cats = pd.read_sql(f"SELECT DISTINCT category FROM {table_name}", engine)
-                selected_cats = st.multiselect(f"Category", cats["category"].dropna().unique(), key=f"cat_{table_name}")
-                if selected_cats: active_filters["category"] = selected_cats
+                cat_in = st.text_input(
+                    "Category", 
+                    placeholder="e.g. 1001, 5001",
+                    key=f"cat_in_{table_name}"
+                )
+                if cat_in:
+                    active_filters["category"] = [c.strip() for c in cat_in.split(",") if c.strip()]
             except: st.caption("No category column")
+
+        with f_col5:
+            try:
+                lines = pd.read_sql(f"SELECT DISTINCT line_no FROM {table_name}", engine)
+                selected_lines = st.multiselect(f"Line Number", lines["line_no"].dropna().unique(), key=f"line_{table_name}")
+                if selected_lines: active_filters["line_no"] = selected_lines
+            except: st.caption("No line number column")
 
         st.divider()
         summary = get_summary(table_name, active_filters)
