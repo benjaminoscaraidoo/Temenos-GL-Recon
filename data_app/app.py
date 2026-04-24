@@ -6,7 +6,7 @@ import gc
 from celery.result import AsyncResult
 import shutil
 from tasks import process_csv_batch, app
-from analysis_sql import get_summary, get_total_summary, get_financial_dashboard_summary
+from analysis_sql import get_summary, get_total_summary, get_financial_dashboard_summary, get_consolidated_summary
 from db import get_engine
 from utils.detect_delimiter import detect_delimiter
 from schemas import TEMPLATES
@@ -154,11 +154,12 @@ if st.session_state.processing_complete:
 st.divider()
 st.header("📊 Multi-Table Analytics")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "STMT.ENTRY",
     "CATEG.ENTRY",
     "RE.CONSOL.SPEC.ENTRY",
-    "TOTAL ANALYTICS"
+    "TOTAL ANALYTICS",
+    "LINE CONSOLIDATION"
 ])
 
 def render_table_analytics(table_name):
@@ -322,8 +323,74 @@ def render_total_table_analytics1():
     except Exception as e:
         st.error(f"Error in Total Analytics: {e}")
 
+
+
+def render_line_consolidation():
+    st.subheader("🔗 Cross-Table Line Consolidation")
+    st.info("This view aggregates amounts across all tables grouped by Line Number.")
+
+    # 1. User Input for Line Filter
+    line_search = st.text_input(
+        "Search Line Number", 
+        placeholder="e.g. 3002.7300 or leave blank for all",
+        key="line_search_input"
+    )
+
+    try:
+        # 2. Fetch Data
+        with st.spinner("Calculating line-wise totals..."):
+            df = get_consolidated_summary(line_filter=line_search)
+
+        if df.empty:
+            st.warning("No data found for the specified line filter.")
+            return
+
+        # 3. Pivot the Data for better reconciliation
+        # This puts STMT, CATEG, and CONSOL in columns side-by-side
+        pivot_df = df.pivot(index='line_no', columns='source', values='total_amount').fillna(0)
+        
+        # Add a Difference column if all sources exist
+        if all(col in pivot_df.columns for col in ['STMT', 'CONSOL', 'CATEG']):
+            pivot_df['TOTAL BAL LINE'] = pivot_df['STMT'] + pivot_df['CONSOL'] + pivot_df['CATEG']
+
+        # 4. Display Metrics for the top search result if a specific line is entered
+        if line_search and not pivot_df.empty:
+            cols = st.columns(len(pivot_df.columns))
+            for i, col_name in enumerate(pivot_df.columns):
+                val = pivot_df.iloc[0][col_name]
+                cols[i].metric(col_name, f"GH₵ {val:,.2f}")
+
+        st.divider()
+
+        # 5. Render Dataframes
+        col_left, col_right = st.columns([2, 1])
+        
+        with col_left:
+            st.write("### 💵 Financial Comparison")
+            st.dataframe(pivot_df.style.format("GH₵ {:,.2f}"), width='stretch')
+
+        with col_right:
+            st.write("### 📂 Record Counts")
+            counts_df = df.pivot(index='line_no', columns='source', values='total_records').fillna(0)
+            st.dataframe(counts_df.style.format("{:,.0f}"), width='stretch')
+
+        # 6. Download Button
+        csv = pivot_df.to_csv().encode('utf-8')
+        st.download_button(
+            "📥 Download Line Comparison",
+            csv,
+            "line_consolidation.csv",
+            "text/csv"
+        )
+
+    except Exception as e:
+        st.error(f"Error in Line Consolidation: {e}")
+
+
+
 # Tab Execution
 with tab1: render_table_analytics("stmt_entry")
 with tab2: render_table_analytics("categ_entry")
 with tab3: render_table_analytics("re_consol_spec_entry")
 with tab4: render_total_table_analytics()
+with tab5: render_line_consolidation()

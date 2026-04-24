@@ -96,3 +96,55 @@ def get_summary(table, filters):
 
     with engine.connect() as conn:
         return pd.read_sql(text(query), conn)
+
+import pandas as pd
+from db import get_engine
+
+engine = get_engine()
+
+
+def get_consolidated_summary(line_filter=None):
+
+    query = """
+    SELECT
+        line_no,
+        SUM(amount) AS total_amount,
+        COUNT(*) AS total_records,
+        source
+    FROM (
+        -- STMT
+        SELECT
+            line_no,
+            amount,
+            'STMT' AS source
+        FROM stmt_entry
+
+        UNION ALL
+
+        -- CATEG
+        SELECT
+            line_no,
+            amount,
+            'CATEG' AS source
+        FROM categ_entry
+
+        UNION ALL
+
+        -- CONSOL
+        SELECT
+            line_no,
+            amount,
+            'CONSOL' AS source
+        FROM re_consol_spec_entry
+    ) t
+    """
+
+    if line_filter:
+        query += f" WHERE line_no ILIKE '%{line_filter}%' "
+
+    query += """
+    GROUP BY line_no, source
+    ORDER BY line_no
+    """
+
+    return pd.read_sql(query, engine)
